@@ -1,20 +1,48 @@
 import numpy as np
 import pygame
 import time
+import gymnasium as gym
+from gymnasium import spaces
 
-class MazeEnv:
-    def __init__(self, level=1, partial_observe=True):
+class MazeEnv(gym.Env):
+    def __init__(self, level=1, partial_observe=True, render_mode=None):
         self.level = level
         self.partial_observe = partial_observe
+        self.render_mode = render_mode
         self.predefined_mazes = self._create_predefined_mazes()
         self.cell_size = 30  # 每个格子的大小
         self.speed = 2.0     # 正常移动速度（像素/帧）
         self.run_speed = 4.0 # 加速时的速度
         self.double_click_time = 0.3  # 双击检测时间窗口（秒）
+        
+        # RL环境相关设置
+        self.maze = self.predefined_mazes[self.level].copy()
+        self.size = self.maze.shape[0]
+        self.view_range = 2 if self.partial_observe else self.size
+        
+        # 定义观察空间
+        obs_shape = (2*self.view_range+1, 2*self.view_range+1)
+        self.observation_space = spaces.Dict({
+            'map': spaces.Box(low=-1, high=1, shape=obs_shape, dtype=np.float32),
+            'fps': spaces.Box(low=0, high=120, shape=(1,), dtype=np.float32)
+        })
+        
+        # 定义动作空间: [up, down]的连续值 (-1.0 到 1.0)
+        self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
+        
+        # Pygame相关
+        if self.render_mode == 'human':
+            pygame.init()
+            self.screen_width = 600
+            self.screen_height = 600
+            self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
+            pygame.display.set_caption("RL Maze")
+            self.clock = pygame.time.Clock()
+        
         self.reset()
 
     def _create_predefined_mazes(self):
-        # 与原代码相同，定义预设迷宫
+        # 定义预设迷宫
         mazes = {}
         maze1 = np.zeros((8, 8))
         obstacles1 = [(1, 2), (1, 5), (2, 1), (2, 3), (2, 6), (3, 3), (3, 5),
@@ -35,7 +63,17 @@ class MazeEnv:
         self.key_press_times = {'left': [], 'right': [], 'up': [], 'down': []}
         self.is_running = False
         self.view_range = 2 if self.partial_observe else self.size
-        return self._get_observation()
+        self.steps = 0
+        self.current_fps = 60  # 初始FPS
+        
+        # For RL
+        observation = self._get_observation()
+        info = {}
+        
+        if self.render_mode == 'human':
+            self._render_frame()
+            
+        return observation, info
 
     def _get_observation(self):
         x, y = int(self.current_pos[0] // self.cell_size), int(self.current_pos[1] // self.cell_size)
@@ -45,22 +83,35 @@ class MazeEnv:
                 ni, nj = x + i, y + j
                 if 0 <= ni < self.size and 0 <= nj < self.size:
                     obs[i+self.view_range, j+self.view_range] = self.maze[ni, nj]
-        return obs
-
-    def step(self):
-        self.velocity = [0, 0]
-        current_speed = self.run_speed if self.is_running else self.speed
-        if self.key_states['left']:
-            self.velocity[1] = -current_speed
-        if self.key_states['right']:
-            self.velocity[1] = current_speed
-        if self.key_states['up']:
-            self.velocity[0] = -current_speed
-        if self.key_states['down']:
-            self.velocity[0] = current_speed
+        
+        # 添加目标位置的相对位置信息
+        # 对于RL环境，返回字典格式的观察
+        return {
+            'map': obs.astype(np.float32),
+            'fps': np.array([self.current_fps], dtype=np.float32)
+        }
+    
+    def step(self, action=None):
+        # 如果传入 action（例如强化学习控制），则不使用按键状态
+        if action is not None:
+            # 假设 action 是一个2维向量，例如 [vertical, horizontal]
+            current_speed = self.run_speed if self.is_running else self.speed
+            self.velocity = [action[0] * current_speed, action[1] * current_speed]
+        else:
+            self.velocity = [0, 0]
+            current_speed = self.run_speed if self.is_running else self.speed
+            if self.key_states['left']:
+                self.velocity[1] = -current_speed
+            if self.key_states['right']:
+                self.velocity[1] = current_speed
+            if self.key_states['up']:
+                self.velocity[0] = -current_speed
+            if self.key_states['down']:
+                self.velocity[0] = current_speed
 
         new_pos = [self.current_pos[0] + self.velocity[0], self.current_pos[1] + self.velocity[1]]
-        new_grid_x, new_grid_y = int(new_pos[0] // self.cell_size), int(new_pos[1] // self.cell_size)
+        new_grid_x = int(new_pos[0] // self.cell_size)
+        new_grid_y = int(new_pos[1] // self.cell_size)
         if (0 <= new_grid_x < self.size and 0 <= new_grid_y < self.size and 
             self.maze[new_grid_x, new_grid_y] == 0):
             self.current_pos = new_pos
@@ -70,7 +121,112 @@ class MazeEnv:
         grid_pos = (int(self.current_pos[0] // self.cell_size), int(self.current_pos[1] // self.cell_size))
         done = grid_pos == self.goal_pos
         reward = 10 if done else -0.1
-        return self._get_observation(), reward, done
+        # 统一返回 gym 接口版本（terminated, truncated, info）
+        return self._get_observation(), reward, done, False, {}
+
+    def _process_pygame_events(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                return True
+        return False
+
+    def render(self):
+        if self.render_mode == 'human':
+            return self._render_frame()
+
+    def _render_frame(self):
+        if not hasattr(self, 'screen'):
+            pygame.init()
+            self.screen_width = 600
+            self.screen_height = 600
+            self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
+            pygame.display.set_caption("RL Maze")
+            self.clock = pygame.time.Clock()
+            
+        # 获取屏幕尺寸
+        screen_width, screen_height = self.screen.get_size()
+        maze_width = self.size * self.cell_size
+        maze_height = self.size * self.cell_size
+
+        # 计算相机位置，以角色为中心
+        camera_x = self.current_pos[1] - screen_width / 2
+        camera_y = self.current_pos[0] - screen_height / 2
+
+        # 限制相机位置在迷宫范围内
+        if maze_width > screen_width:
+            camera_x = max(0, min(camera_x, maze_width - screen_width))
+        else:
+            camera_x = 0
+        if maze_height > screen_height:
+            camera_y = max(0, min(camera_y, maze_height - screen_height))
+        else:
+            camera_y = 0
+
+        # 清空屏幕
+        self.screen.fill((255, 255, 255))
+
+        # 渲染迷宫
+        for i in range(self.size):
+            for j in range(self.size):
+                screen_x = j * self.cell_size - camera_x
+                screen_y = i * self.cell_size - camera_y
+                # 只渲染屏幕可见区域的格子
+                if -self.cell_size <= screen_x < screen_width and -self.cell_size <= screen_y < screen_height:
+                    if self.maze[i, j] == 1:
+                        pygame.draw.rect(self.screen, (0, 0, 0), 
+                                      (screen_x, screen_y, self.cell_size, self.cell_size))
+                    pygame.draw.rect(self.screen, (200, 200, 200), 
+                                   (screen_x, screen_y, self.cell_size, self.cell_size), 1)
+
+        # 绘制起点和终点
+        start_screen_x = self.start_pos[1] * self.cell_size - camera_x
+        start_screen_y = self.start_pos[0] * self.cell_size - camera_y
+        goal_screen_x = self.goal_pos[1] * self.cell_size - camera_x
+        goal_screen_y = self.goal_pos[0] * self.cell_size - camera_y
+
+        if -self.cell_size <= start_screen_x < screen_width and -self.cell_size <= start_screen_y < screen_height:
+            pygame.draw.rect(self.screen, (0, 255, 0), 
+                          (start_screen_x, start_screen_y, self.cell_size, self.cell_size))
+        if -self.cell_size <= goal_screen_x < screen_width and -self.cell_size <= goal_screen_y < screen_height:
+            pygame.draw.rect(self.screen, (255, 0, 0), 
+                          (goal_screen_x, goal_screen_y, self.cell_size, self.cell_size))
+
+        # 绘制角色
+        player_screen_x = self.current_pos[1] - camera_x
+        player_screen_y = self.current_pos[0] - camera_y
+        pygame.draw.circle(self.screen, (0, 0, 255), 
+                         (int(player_screen_x), int(player_screen_y)), self.cell_size // 3)
+
+        # 部分可观察迷雾
+        if self.partial_observe:
+            fog = pygame.Surface((screen_width, screen_height), pygame.SRCALPHA)
+            fog.fill((0, 0, 0, 100))  # 调低透明度 (原来是180)
+            x, y = int(self.current_pos[0] // self.cell_size), int(self.current_pos[1] // self.cell_size)
+            for i in range(-self.view_range, self.view_range + 1):
+                for j in range(-self.view_range, self.view_range + 1):
+                    ni, nj = x + i, y + j
+                    if 0 <= ni < self.size and 0 <= nj < self.size:
+                        screen_x = nj * self.cell_size - camera_x
+                        screen_y = ni * self.cell_size - camera_y
+                        if -self.cell_size <= screen_x < screen_width and -self.cell_size <= screen_y < screen_height:
+                            pygame.draw.rect(fog, (0, 0, 0, 0), 
+                                             (screen_x, screen_y, self.cell_size, self.cell_size))
+            self.screen.blit(fog, (0, 0))
+            
+        # 显示FPS
+        font = pygame.font.Font(None, 36)
+        fps_text = font.render(f"FPS: {int(self.current_fps)}", True, (0, 0, 0))
+        self.screen.blit(fps_text, (10, 10))
+
+        pygame.display.flip()
+        self.clock.tick(60)
+        return self.screen
+
+    def close(self):
+        if hasattr(self, 'screen'):
+            pygame.quit()
+
 
     def update_keys(self, events):
         current_time = time.time()
@@ -107,115 +263,3 @@ class MazeEnv:
             if not any(self.key_states.values()):
                 self.is_running = False
 
-    def render(self, surface):
-        # 获取屏幕尺寸
-        screen_width, screen_height = surface.get_size()
-        maze_width = self.size * self.cell_size
-        maze_height = self.size * self.cell_size
-
-        # 计算相机位置，以角色为中心
-        camera_x = self.current_pos[1] - screen_width / 2
-        camera_y = self.current_pos[0] - screen_height / 2
-
-        # 限制相机位置在迷宫范围内
-        if maze_width > screen_width:
-            camera_x = max(0, min(camera_x, maze_width - screen_width))
-        else:
-            camera_x = 0
-        if maze_height > screen_height:
-            camera_y = max(0, min(camera_y, maze_height - screen_height))
-        else:
-            camera_y = 0
-
-        # 清空屏幕
-        surface.fill((255, 255, 255))
-
-        # 渲染迷宫
-        for i in range(self.size):
-            for j in range(self.size):
-                screen_x = j * self.cell_size - camera_x
-                screen_y = i * self.cell_size - camera_y
-                # 只渲染屏幕可见区域的格子
-                if -self.cell_size <= screen_x < screen_width and -self.cell_size <= screen_y < screen_height:
-                    if self.maze[i, j] == 1:
-                        pygame.draw.rect(surface, (0, 0, 0), 
-                                        (screen_x, screen_y, self.cell_size, self.cell_size))
-                    pygame.draw.rect(surface, (200, 200, 200), 
-                                    (screen_x, screen_y, self.cell_size, self.cell_size), 1)
-
-        # 绘制起点和终点
-        start_screen_x = self.start_pos[1] * self.cell_size - camera_x
-        start_screen_y = self.start_pos[0] * self.cell_size - camera_y
-        goal_screen_x = self.goal_pos[1] * self.cell_size - camera_x
-        goal_screen_y = self.goal_pos[0] * self.cell_size - camera_y
-
-        if -self.cell_size <= start_screen_x < screen_width and -self.cell_size <= start_screen_y < screen_height:
-            pygame.draw.rect(surface, (0, 255, 0), 
-                            (start_screen_x, start_screen_y, self.cell_size, self.cell_size))
-        if -self.cell_size <= goal_screen_x < screen_width and -self.cell_size <= goal_screen_y < screen_height:
-            pygame.draw.rect(surface, (255, 0, 0), 
-                            (goal_screen_x, goal_screen_y, self.cell_size, self.cell_size))
-
-        # 绘制角色
-        player_screen_x = self.current_pos[1] - camera_x
-        player_screen_y = self.current_pos[0] - camera_y
-        pygame.draw.circle(surface, (0, 0, 255), 
-                          (int(player_screen_x), int(player_screen_y)), self.cell_size // 3)
-
-        # 部分可观察迷雾
-        if self.partial_observe:
-            fog = pygame.Surface((screen_width, screen_height), pygame.SRCALPHA)
-            fog.fill((0, 0, 0, 180))
-            x, y = int(self.current_pos[0] // self.cell_size), int(self.current_pos[1] // self.cell_size)
-            for i in range(-self.view_range, self.view_range + 1):
-                for j in range(-self.view_range, self.view_range + 1):
-                    ni, nj = x + i, y + j
-                    if 0 <= ni < self.size and 0 <= nj < self.size:
-                        screen_x = nj * self.cell_size - camera_x
-                        screen_y = ni * self.cell_size - camera_y
-                        if -self.cell_size <= screen_x < screen_width and -self.cell_size <= screen_y < screen_height:
-                            pygame.draw.rect(fog, (0, 0, 0, 0), 
-                                            (screen_x, screen_y, self.cell_size, self.cell_size))
-            surface.blit(fog, (0, 0))
-
-# 测试代码
-def play_game():
-    pygame.init()
-    env = MazeEnv(level=1)
-    # 设置更大的屏幕尺寸以观察相机效果
-    screen_width = 600
-    screen_height = 600
-    screen = pygame.display.set_mode((screen_width, screen_height))
-    pygame.display.set_caption("DFO风格迷宫")
-    clock = pygame.time.Clock()
-    
-    running = True
-    game_over = False  # 添加游戏结束标志
-    while running:
-        events = pygame.event.get()
-        for event in events:
-            if event.type == pygame.QUIT:
-                running = False
-        
-        if not game_over:
-            env.update_keys(events)
-            obs, reward, done = env.step()
-            env.render(screen)
-            pygame.display.flip()
-
-            if done:
-                font = pygame.font.Font(None, 50)
-                text = font.render("pass!", True, (255, 0, 0))
-                text_rect = text.get_rect(center=(screen_width // 2, screen_height // 2))
-                screen.blit(text, text_rect)
-                pygame.display.flip()
-                game_over = True  # 设置游戏结束标志
-                pygame.time.delay(3000) # 显示3秒后退出
-                running = False
-        
-        clock.tick(60)  # 60 FPS
-    
-    pygame.quit()
-
-if __name__ == "__main__":
-    play_game()
