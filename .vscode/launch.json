@@ -22,6 +22,19 @@
                 "--mode",
                 "play"
             ]
+        },
+        {
+            "name": "Python Debugger: train",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "./main.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--mode",
+                "train",
+                "--model_path",
+                "./runs/ddpg.pth"
+            ]
         }
     ]
 }

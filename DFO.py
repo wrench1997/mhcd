@@ -28,8 +28,9 @@ class MazeEnv(gym.Env):
         })
         
         # 定义动作空间: [up, down]的连续值 (-1.0 到 1.0)
-        self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
+        #self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
         
+        self.action_space = spaces.Discrete(5)        
         # Pygame相关
         if self.render_mode == 'human':
             pygame.init()
@@ -92,23 +93,36 @@ class MazeEnv(gym.Env):
         }
     
     def step(self, action=None):
-        # 如果传入 action（例如强化学习控制），则不使用按键状态
+        # 如果传入 action（强化学习控制）
         if action is not None:
-            # 假设 action 是一个2维向量，例如 [vertical, horizontal]
-            current_speed = self.run_speed if self.is_running else self.speed
-            self.velocity = [action[0] * current_speed, action[1] * current_speed]
-        else:
-            self.velocity = [0, 0]
-            current_speed = self.run_speed if self.is_running else self.speed
-            if self.key_states['left']:
-                self.velocity[1] = -current_speed
-            if self.key_states['right']:
-                self.velocity[1] = current_speed
-            if self.key_states['up']:
-                self.velocity[0] = -current_speed
-            if self.key_states['down']:
-                self.velocity[0] = current_speed
+            # 重置所有按键状态
+            for key in self.key_states:
+                self.key_states[key] = False
+                
+            # 根据离散动作设置对应的按键状态
+            if action == 1:  # 左
+                self.key_states['left'] = True
+            elif action == 2:  # 右
+                self.key_states['right'] = True
+            elif action == 3:  # 上
+                self.key_states['up'] = True
+            elif action == 4:  # 下
+                self.key_states['down'] = True
+                
+        # 根据当前按键状态更新速度
+        current_speed = self.run_speed if self.is_running else self.speed
+        self.velocity = [0, 0]  # 重置速度
+        
+        if self.key_states['left']:
+            self.velocity[1] = -current_speed
+        if self.key_states['right']:
+            self.velocity[1] = current_speed
+        if self.key_states['up']:
+            self.velocity[0] = -current_speed
+        if self.key_states['down']:
+            self.velocity[0] = current_speed
 
+        # ...其余代码保持不变...
         new_pos = [self.current_pos[0] + self.velocity[0], self.current_pos[1] + self.velocity[1]]
         new_grid_x = int(new_pos[0] // self.cell_size)
         new_grid_y = int(new_pos[1] // self.cell_size)
@@ -117,11 +131,16 @@ class MazeEnv(gym.Env):
             self.current_pos = new_pos
         else:
             self.velocity = [0, 0]
+            reward = -1.0  # 撞墙惩罚
 
         grid_pos = (int(self.current_pos[0] // self.cell_size), int(self.current_pos[1] // self.cell_size))
         done = grid_pos == self.goal_pos
-        reward = 10 if done else -0.1
-        # 统一返回 gym 接口版本（terminated, truncated, info）
+        
+        if done:
+            reward = 10.0  # 到达目标奖励
+        elif not 'reward' in locals():  # 如果没有撞墙
+            reward = -0.1  # 每步小惩罚
+
         return self._get_observation(), reward, done, False, {}
 
     def _process_pygame_events(self):

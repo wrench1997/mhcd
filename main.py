@@ -1,5 +1,5 @@
 import argparse
-from agent import train_ddpg, test_agent, process_state  # 从 agent 导入 process_state
+from agent import train_sac, test_agent, process_state  # 从 agent 导入 process_state
 from play import play_game
 from DFO import MazeEnv  # 新增导入 MazeEnv
 
@@ -18,7 +18,7 @@ if __name__ == "__main__":
     
     if args.mode == 'train':
         # Train DDPG agent
-        agent, rewards, steps = train_ddpg(
+        agent, rewards, steps = train_sac(
             env_fn=env_factory,
             state_processor_fn=process_state,
             episodes=args.episodes

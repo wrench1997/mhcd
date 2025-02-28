@@ -5,11 +5,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime
 import pygame
-from ddpg import DDPG, ReplayBuffer  # 新增导入
+from sac import DiscreteSAC, ReplayBuffer  # 改为导入DiscreteSAC
 
 
 
-def train_ddpg(env_fn, state_processor_fn, 
+def train_sac(env_fn, state_processor_fn, 
               episodes=1000, max_steps=500, batch_size=256, 
               render_interval=100, save_interval=500, eval_interval=100):
     
@@ -21,14 +21,13 @@ def train_ddpg(env_fn, state_processor_fn,
     print(f"Using device: {device}")
     
     # Get state and action dimensions
-    state = env.reset()
+    state,_ = env.reset()
     obs_sample = state_processor_fn(state)
     state_dim = obs_sample.shape[0]  # Flattened state dim
-    action_dim = env.action_space.shape[0]
-    max_action = float(env.action_space.high[0])
+    action_dim = env.action_space.n
     
-    # Initialize DDPG agent
-    agent = DDPG(state_dim, action_dim, max_action, device)
+    # Initialize SAC agent with discrete actions
+    agent = DiscreteSAC(state_dim, action_dim, device)
     
     # Initialize replay buffer
     replay_buffer = ReplayBuffer(state_dim, action_dim, max_size=int(1e6), device=device)
@@ -43,7 +42,7 @@ def train_ddpg(env_fn, state_processor_fn,
     episode_steps = []
     
     for episode in range(1, episodes + 1):
-        state = env.reset()
+        state,_ = env.reset()
         episode_reward = 0
         episode_step = 0
         done = False
@@ -58,7 +57,7 @@ def train_ddpg(env_fn, state_processor_fn,
             processed_state = state_processor_fn(state)
             
             # Select action with noise for exploration
-            action = agent.select_action(processed_state, noise=0.1)
+            action = agent.select_action(processed_state)
             
             # Execute action in environment
             next_state, reward, done, truncated, info = env.step(action)
@@ -128,7 +127,7 @@ def evaluate_agent(agent, env_fn, state_processor_fn, episodes=10, render=False)
     total_rewards = []
     
     for _ in range(episodes):
-        state = env.reset()
+        state,_ = env.reset()
         episode_reward = 0
         done = False
         
@@ -178,14 +177,14 @@ def test_agent(model_path, env_fn, state_processor_fn, num_episodes=5, render=Tr
     print(f"Using device: {device}")
     
     # Get state and action dimensions
-    state = env.reset()
+    state,_ = env.reset()
     obs_sample = state_processor_fn(state)
     state_dim = obs_sample.shape[0]  # Flattened state dim
     action_dim = env.action_space.shape[0]
     max_action = float(env.action_space.high[0])
     
     # Initialize DDPG agent
-    agent = DDPG(state_dim, action_dim, max_action, device)
+    agent = SAC(state_dim, action_dim, max_action, device)
     
     # Load trained model
     agent.load(model_path)
@@ -195,7 +194,7 @@ def test_agent(model_path, env_fn, state_processor_fn, num_episodes=5, render=Tr
     episode_steps = []
     
     for episode in range(1, num_episodes + 1):
-        state = env.reset()
+        state,_ = env.reset()
         episode_reward = 0
         episode_step = 0
         done = False
