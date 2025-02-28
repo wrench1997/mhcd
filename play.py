@@ -56,11 +56,9 @@ def play_game():
             # (We'll just use manual controls, not the step() method with actions)
             action = [0, 0]  # Placeholder, not actually used
 
-            action = [0.0, 0.5]  # 默认向右移动
-            if env.key_states['up']:
-                action[0] -= 1.0  # 向上移动
-            if env.key_states['down']:
-                action[0] += 1.0  # 向下移动
+      
+
+            env.update_keys(events)
 
             # Update environment based on key states
             # env.update_keys(events)
