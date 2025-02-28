@@ -1,8 +1,7 @@
 import argparse
-from agent  import train_ddpg ,test_agent
+from agent import train_ddpg, test_agent, process_state  # 从 agent 导入 process_state
 from play import play_game
-
-
+from DFO import MazeEnv  # 新增导入 MazeEnv
 
 def env_factory(render_mode=None):
     return MazeEnv(level=1, partial_observe=True, render_mode=render_mode)
