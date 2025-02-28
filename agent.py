@@ -10,7 +10,7 @@ from sac import DiscreteSAC, ReplayBuffer  # 改为导入DiscreteSAC
 
 
 def train_sac(env_fn, state_processor_fn, 
-              episodes=1000, max_steps=500, batch_size=256, 
+              episodes=1000, max_steps=5000, batch_size=256, 
               render_interval=100, save_interval=500, eval_interval=100):
     
     # Create environment
@@ -30,7 +30,7 @@ def train_sac(env_fn, state_processor_fn,
     agent = DiscreteSAC(state_dim, action_dim, device)
     
     # Initialize replay buffer
-    replay_buffer = ReplayBuffer(state_dim, action_dim, max_size=int(1e6), device=device)
+    replay_buffer = ReplayBuffer(state_dim, action_dim, max_size=int(1e7), device=device)
     
     # Create directory for saving models and results
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

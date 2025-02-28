@@ -41,6 +41,7 @@ class MazeEnv(gym.Env):
             self.clock = pygame.time.Clock()
         
         self.reset()
+        
 
     def _create_predefined_mazes(self):
         # 定义预设迷宫
@@ -66,7 +67,8 @@ class MazeEnv(gym.Env):
         self.view_range = 2 if self.partial_observe else self.size
         self.steps = 0
         self.current_fps = 60  # 初始FPS
-        
+        self.start_time = time.time()
+        self.latest_time = time.time() - self.start_time
         # For RL
         observation = self._get_observation()
         info = {}
@@ -89,11 +91,13 @@ class MazeEnv(gym.Env):
         # 对于RL环境，返回字典格式的观察
         return {
             'map': obs.astype(np.float32),
-            'fps': np.array([self.current_fps], dtype=np.float32)
+            'fps': np.array([self.current_fps], dtype=np.float32),
+            'time': np.array([self.latest_time], dtype=np.float32)
         }
     
     def step(self, action=None):
         # 如果传入 action（强化学习控制）
+        self.latest_time = time.time() - self.start_time
         if action is not None:
             # 重置所有按键状态
             for key in self.key_states:
@@ -134,10 +138,12 @@ class MazeEnv(gym.Env):
             reward = -1.0  # 撞墙惩罚
 
         grid_pos = (int(self.current_pos[0] // self.cell_size), int(self.current_pos[1] // self.cell_size))
+        
         done = grid_pos == self.goal_pos
         
         if done:
-            reward = 10.0  # 到达目标奖励
+            print(f"Level {self.level} completed in {self.steps} steps.")
+            reward = 1000.0  # 到达目标奖励
         elif not 'reward' in locals():  # 如果没有撞墙
             reward = -0.1  # 每步小惩罚
 

@@ -156,7 +156,7 @@ class DiscreteSAC:
             target_param.data.copy_(param.data)
 
 class ReplayBuffer:
-    def __init__(self, state_dim, action_dim, max_size=int(1e6), device="cpu"):
+    def __init__(self, state_dim, action_dim, max_size=int(1e7), device="cpu"):
         self.device = device
         self.max_size = max_size
         self.ptr = 0
@@ -164,7 +164,7 @@ class ReplayBuffer:
         
         if isinstance(state_dim, dict):
             self.map_shape = state_dim['map']
-            flat_state_dim = np.prod(self.map_shape) + state_dim['fps'][0]
+            flat_state_dim = np.prod(self.map_shape) + state_dim['fps'][0] + state_dim['time'][0]
         else:
             flat_state_dim = state_dim
             
@@ -177,8 +177,8 @@ class ReplayBuffer:
     
     def add(self, state, action, next_state, reward, done):
         if isinstance(state, dict):
-            flat_state = np.concatenate([state['map'].flatten(), state['fps']])
-            flat_next_state = np.concatenate([next_state['map'].flatten(), next_state['fps']])
+            flat_state = np.concatenate([state['map'].flatten(), state['fps'] + state['time']])
+            flat_next_state = np.concatenate([next_state['map'].flatten(), next_state['fps'] + state['time']])
         else:
             flat_state = state
             flat_next_state = next_state
