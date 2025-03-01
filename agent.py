@@ -284,12 +284,8 @@ def test_agent(model_path, env_fn, state_processor_fn, num_episodes=5, render=Tr
             
             # Process state for input to agent
             processed_state = state_processor_fn(state)
-
-            for i in range(15):
-                # Select action without noise (deterministic policy)
-                action = agent.select_action(processed_state)
-                # Execute action in environment
-                next_state, reward, done, truncated, info = env.step(action)
+            action = agent.select_action(processed_state)
+            next_state, reward, done, truncated, info = env.step(action)
             done = done or truncated
             
             # Update state and accumulate reward
@@ -299,9 +295,9 @@ def test_agent(model_path, env_fn, state_processor_fn, num_episodes=5, render=Tr
             
             
             # Render if needed
-            if render:
-                time.sleep(0.01)
-                env.render()
+            # if render:
+            #     time.sleep(0.01)
+            #     env.render()
                 
             # Optional delay for visualization
             #if render:

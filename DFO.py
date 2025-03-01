@@ -185,9 +185,9 @@ class MazeEnv(gym.Env):
                     # reward = 1000.0  # 到达目标奖励
                     break
                     
-                # 渲染画面
-                if self.render_mode == 'human':
-                    self._render_frame()
+            # 渲染画面
+            if self.render_mode == 'human':
+                self._render_frame()
 
             # 如果没有获得任何奖励(没有撞墙也没到终点)
             if reward == 0:
