@@ -35,6 +35,19 @@
                 "--model_path",
                 "./runs/ddpg.pth"
             ]
+        },
+        {
+            "name": "Python Debugger: test",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "./main.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--mode",
+                "test",
+                "--model_path",
+                "./results/maze_ddpg_20250301_210054/model_final"
+            ]
         }
     ]
 }

@@ -36,3 +36,5 @@ output_images_bak/*
 runs/*
 
 wandb/*
+
+results/*

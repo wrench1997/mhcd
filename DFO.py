@@ -98,6 +98,7 @@ class MazeEnv(gym.Env):
     def step(self, action=None):
         # 如果传入 action（强化学习控制）
         self.latest_time = time.time() - self.start_time
+        reward = 0
         if action is not None:
             # 重置所有按键状态
             for key in self.key_states:
@@ -112,42 +113,87 @@ class MazeEnv(gym.Env):
                 self.key_states['up'] = True
             elif action == 4:  # 下
                 self.key_states['down'] = True
-                
-        # 根据当前按键状态更新速度
-        current_speed = self.run_speed if self.is_running else self.speed
-        self.velocity = [0, 0]  # 重置速度
-        
-        if self.key_states['left']:
-            self.velocity[1] = -current_speed
-        if self.key_states['right']:
-            self.velocity[1] = current_speed
-        if self.key_states['up']:
-            self.velocity[0] = -current_speed
-        if self.key_states['down']:
-            self.velocity[0] = current_speed
+        if action is None:        
+            # 根据当前按键状态更新速度
+            current_speed = self.run_speed if self.is_running else self.speed
+            self.velocity = [0, 0]  # 重置速度
+            
+            if self.key_states['left']:
+                self.velocity[1] = -current_speed
+            if self.key_states['right']:
+                self.velocity[1] = current_speed
+            if self.key_states['up']:
+                self.velocity[0] = -current_speed
+            if self.key_states['down']:
+                self.velocity[0] = current_speed
 
-        # ...其余代码保持不变...
-        new_pos = [self.current_pos[0] + self.velocity[0], self.current_pos[1] + self.velocity[1]]
-        new_grid_x = int(new_pos[0] // self.cell_size)
-        new_grid_y = int(new_pos[1] // self.cell_size)
-        if (0 <= new_grid_x < self.size and 0 <= new_grid_y < self.size and 
-            self.maze[new_grid_x, new_grid_y] == 0):
-            self.current_pos = new_pos
+            # ...其余代码保持不变...
+            new_pos = [self.current_pos[0] + self.velocity[0], self.current_pos[1] + self.velocity[1]]
+            new_grid_x = int(new_pos[0] // self.cell_size)
+            new_grid_y = int(new_pos[1] // self.cell_size)
+            if (0 <= new_grid_x < self.size and 0 <= new_grid_y < self.size and 
+                self.maze[new_grid_x, new_grid_y] == 0):
+                self.current_pos = new_pos
+            else:
+                self.velocity = [0, 0]
+                #reward = -1.0  # 撞墙惩罚
+
+            grid_pos = (int(self.current_pos[0] // self.cell_size), int(self.current_pos[1] // self.cell_size))
+            
+            done = grid_pos == self.goal_pos
+            
+            if done:
+                print(f"Level {self.level} completed in {self.steps} steps.")
+                #reward += 1000.0  # 到达目标奖励
+            elif not 'reward' in locals():  # 如果没有撞墙
+                reward = -0.1  # 每步小惩罚
+
+            return self._get_observation(), reward, done, False, {}
         else:
-            self.velocity = [0, 0]
-            reward = -1.0  # 撞墙惩罚
+            for _ in range(25):
+                # 根据当前按键状态更新速度
+                current_speed = self.run_speed if self.is_running else self.speed
+                self.velocity = [0, 0]  # 重置速度
+                
+                if self.key_states['left']:
+                    self.velocity[1] = -current_speed
+                if self.key_states['right']:
+                    self.velocity[1] = current_speed
+                if self.key_states['up']:
+                    self.velocity[0] = -current_speed
+                if self.key_states['down']:
+                    self.velocity[0] = current_speed
 
-        grid_pos = (int(self.current_pos[0] // self.cell_size), int(self.current_pos[1] // self.cell_size))
-        
-        done = grid_pos == self.goal_pos
-        
-        if done:
-            print(f"Level {self.level} completed in {self.steps} steps.")
-            reward = 1000.0  # 到达目标奖励
-        elif not 'reward' in locals():  # 如果没有撞墙
-            reward = -0.1  # 每步小惩罚
+                # 更新位置
+                new_pos = [self.current_pos[0] + self.velocity[0], self.current_pos[1] + self.velocity[1]]
+                new_grid_x = int(new_pos[0] // self.cell_size)
+                new_grid_y = int(new_pos[1] // self.cell_size)
+                
+                if (0 <= new_grid_x < self.size and 0 <= new_grid_y < self.size and 
+                    self.maze[new_grid_x, new_grid_y] == 0):
+                    self.current_pos = new_pos
+                else:
+                    self.velocity = [0, 0]
+                    # reward += -1.0  # 撞墙惩罚
 
-        return self._get_observation(), reward, done, False, {}
+                grid_pos = (int(self.current_pos[0] // self.cell_size), int(self.current_pos[1] // self.cell_size))
+                done = grid_pos == self.goal_pos
+                
+                # 如果到达目标,立即结束
+                if done:
+                    print(f"Level {self.level} completed in {self.steps} steps.")
+                    # reward = 1000.0  # 到达目标奖励
+                    break
+                    
+                # 渲染画面
+                if self.render_mode == 'human':
+                    self._render_frame()
+
+            # 如果没有获得任何奖励(没有撞墙也没到终点)
+            if reward == 0:
+                reward = -0.1  # 每步小惩罚
+
+            return self._get_observation(), reward, done, False, {}            
 
     def _process_pygame_events(self):
         for event in pygame.event.get():
